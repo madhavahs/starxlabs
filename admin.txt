@@ -1,0 +1,50 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>StarX Labs – Admin</title>
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f3f8ff;color:#0f1b33}
+.box{max-width:880px;margin:0 auto;padding:24px 18px}
+.card{background:#fff;border:1px solid #e1eaf7;border-radius:16px;padding:22px;margin-bottom:18px;box-shadow:0 4px 18px rgba(15,27,51,.06)}
+input,select,button{font:inherit;padding:11px 14px;border-radius:10px;border:1px solid #cfdcf2;margin:4px 0;width:100%;box-sizing:border-box}
+button{background:linear-gradient(135deg,#1a8cff,#0a5cff);color:#fff;border:0;font-weight:600;cursor:pointer}
+button.d{background:#e5484d;padding:7px 12px;width:auto;margin-top:6px}
+button.s{background:#fff;color:#0a5cff;border:1px solid #cfdcf2}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.it{border:1px solid #e1eaf7;border-radius:12px;overflow:hidden;background:#fff;font-size:13px}
+.it img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.it div{padding:8px 10px}.it small{color:#1a8cff;display:block;text-transform:uppercase;font-size:11px}
+.m{color:#0a5cff;font-weight:600;min-height:22px}.hide{display:none}
+</style></head><body><div class="box">
+<h1>StarX Labs admin</h1>
+<div class="card" id="login"><h3>Owner login</h3>
+<form id="lf"><input id="em" type="email" placeholder="Email" required autocomplete="username"><input id="pw" type="password" placeholder="Password" required autocomplete="current-password"><button>Log in</button></form><p class="m" id="lmsg"></p></div>
+<div id="panel" class="hide">
+<div class="card"><h3>Add a photo</h3>
+<input id="file" type="file" accept="image/*"><input id="cap" placeholder="Caption, for example Custom moon lamp">
+<select id="cat"><option value="p3d">3D printing</option><option value="iot">IoT &amp; engineering</option><option value="ready">Our products</option><option value="lab">Our lab</option></select>
+<button id="add">Upload photo</button><p class="m" id="msg"></p></div>
+<div class="card"><h3>Your photos</h3><div class="grid" id="list"></div>
+<button class="s" id="imp">Import starter photos (do this once)</button></div>
+<button class="s" id="out">Log out</button></div></div>
+<script type="module">
+import {cfg,SUB,STARTER,configured} from './firebase-config.js';
+const $=i=>document.getElementById(i),msg=t=>$('msg').textContent=t||'';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+if(!configured){$('lmsg').textContent='Add your Firebase settings in firebase-config.js first.';$('lf').classList.add('hide')}
+else{
+const B='https://www.gstatic.com/firebasejs/10.12.2/';
+const {initializeApp}=await import(B+'firebase-app.js');
+const {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}=await import(B+'firebase-auth.js');
+const {getFirestore,collection,addDoc,getDocs,deleteDoc,doc,query,orderBy}=await import(B+'firebase-firestore.js');
+const app=initializeApp(cfg),auth=getAuth(app),db=getFirestore(app),col=collection(db,'gallery');
+$('lf').onsubmit=async e=>{e.preventDefault();try{await signInWithEmailAndPassword(auth,$('em').value,$('pw').value);$('lmsg').textContent=''}catch(x){$('lmsg').textContent='Login failed. Check your email and password.'}};
+$('out').onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{$('login').classList.toggle('hide',!!u);$('panel').classList.toggle('hide',!u);if(u)load()});
+async function load(){const s=await getDocs(query(col,orderBy('ts','desc')));
+$('list').innerHTML=s.docs.map(d=>{const v=d.data();return `<div class="it"><img src="${v.src}" alt=""><div><small>${SUB[v.cat]||''}</small>${esc(v.title)}<br><button class="d" data-id="${d.id}">Delete</button></div></div>`}).join('')||'<p>No photos yet.</p>'}
+$('list').onclick=async e=>{const b=e.target.closest('.d');if(!b||!confirm('Delete this photo?'))return;try{await deleteDoc(doc(db,'gallery',b.dataset.id));load()}catch(x){msg('Could not delete: '+x.message)}};
+const shrink=f=>new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.82))};im.onerror=no;im.src=URL.createObjectURL(f)});
+$('add').onclick=async()=>{const f=$('file').files[0];if(!f)return msg('Choose a photo first.');if(!$('cap').value.trim())return msg('Add a caption.');
+try{msg('Uploading...');await addDoc(col,{src:await shrink(f),cat:$('cat').value,title:$('cap').value.trim(),ts:Date.now()});$('file').value='';$('cap').value='';msg('Photo added.');load()}catch(x){msg('Upload failed: '+x.message)}};
+$('imp').onclick=async()=>{if(!confirm('Import the starter photos into your gallery?'))return;$('imp').disabled=true;
+try{let n=Date.now();for(const [i,p] of STARTER.entries()){const b=await (await fetch(p.src)).blob();const src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)});await addDoc(col,{src,cat:p.cat,title:p.title,ts:n-i})}msg('Starter photos imported.');load()}catch(x){msg('Import failed: '+x.message);$('imp').disabled=false}};
+}
+</script></body></html>
